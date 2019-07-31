@@ -885,6 +885,41 @@ class ELMoTransformerEmbeddings(TokenEmbeddings):
         return self.name
 
 
+def _extract_embeddings(
+    hidden_states: List[torch.FloatTensor],
+    layers: List[int],
+    pooling_operation: str,
+    subword_start_idx: int = 0,
+    subword_end_idx: int = -1,
+) -> List[torch.FloatTensor]:
+    subtoken_embeddings: List[torch.FloatTensor] = []
+
+    for layer in layers:
+        first_embedding: torch.FloatTensor = hidden_states[layer][0][subword_start_idx]
+        if pooling_operation == "first_last":
+            last_embedding: torch.FloatTensor = hidden_states[layer][0][subword_end_idx]
+            final_embedding: torch.FloatTensor = torch.cat(
+                [first_embedding, last_embedding]
+            )
+        elif pooling_operation == "last":
+            final_embedding: torch.FloatTensor = hidden_states[layer][0][
+                subword_end_idx
+            ]
+        elif pooling_operation == "mean":
+            all_embeddings: List[torch.FloatTensor] = [
+                embedding.unsqueeze(0) for embedding in hidden_states[layer][0]
+            ]
+            final_embedding: torch.FloatTensor = torch.mean(
+                torch.cat(all_embeddings, dim=0), dim=0
+            )
+        else:
+            final_embedding: torch.FloatTensor = first_embedding
+
+        subtoken_embeddings.append(final_embedding)
+
+    return subtoken_embeddings
+
+
 class TransformerXLEmbeddings(TokenEmbeddings):
     def __init__(self, model: str = "transfo-xl-wt103", layers: str = "1,2,3"):
         """Transformer-XL embeddings, as proposed in Dai et al., 2019.
@@ -997,31 +1032,13 @@ class XLNetEmbeddings(TokenEmbeddings):
                     tokens_tensor = torch.tensor([indexed_tokens])
                     tokens_tensor = tokens_tensor.to(flair.device)
 
-                    _, _, hidden_states = self.model(tokens_tensor)
+                    hidden_states = self.model(tokens_tensor)[-1]
 
-                    subtoken_embeddings = []
-
-                    for layer in self.layers:
-                        first_embedding = hidden_states[layer][0][0]
-                        if self.pooling_operation == "first_last":
-                            last_embedding = hidden_states[layer][0][-1]
-                            final_embedding = torch.cat(
-                                [first_embedding, last_embedding]
-                            )
-                        elif self.pooling_operation == "last":
-                            final_embedding = hidden_states[layer][0][-1]
-                        elif self.pooling_operation == "mean":
-                            all_embeddings = [
-                                embedding.unsqueeze(0)
-                                for embedding in hidden_states[layer][0]
-                            ]
-                            final_embedding = torch.mean(
-                                torch.cat(all_embeddings, dim=0), dim=0
-                            )
-                        else:
-                            final_embedding = first_embedding
-
-                        subtoken_embeddings.append(final_embedding)
+                    subtoken_embeddings = _extract_embeddings(
+                        hidden_states=hidden_states,
+                        layers=self.layers,
+                        pooling_operation=self.pooling_operation,
+                    )
 
                     final_subtoken_embedding = torch.cat(subtoken_embeddings)
                     token.set_embedding(self.name, final_subtoken_embedding)
@@ -1085,32 +1102,14 @@ class XLMEmbeddings(TokenEmbeddings):
                     indexed_tokens = self.tokenizer.convert_tokens_to_ids(subwords)
                     tokens_tensor = torch.tensor([indexed_tokens])
                     tokens_tensor = tokens_tensor.to(flair.device)
-                    # print(self.model(tokens_tensor)[1])
-                    _, hidden_states = self.model(tokens_tensor)
 
-                    subtoken_embeddings = []
+                    hidden_states = self.model(tokens_tensor)[-1]
 
-                    for layer in self.layers:
-                        first_embedding = hidden_states[layer][0][0]
-                        if self.pooling_operation == "first_last":
-                            last_embedding = hidden_states[layer][0][-1]
-                            final_embedding = torch.cat(
-                                [first_embedding, last_embedding]
-                            )
-                        elif self.pooling_operation == "last":
-                            final_embedding = hidden_states[layer][0][-1]
-                        elif self.pooling_operation == "mean":
-                            all_embeddings = [
-                                embedding.unsqueeze(0)
-                                for embedding in hidden_states[layer][0]
-                            ]
-                            final_embedding = torch.mean(
-                                torch.cat(all_embeddings, dim=0), dim=0
-                            )
-                        else:
-                            final_embedding = first_embedding
-
-                        subtoken_embeddings.append(final_embedding)
+                    subtoken_embeddings = _extract_embeddings(
+                        hidden_states=hidden_states,
+                        layers=self.layers,
+                        pooling_operation=self.pooling_operation,
+                    )
 
                     final_subtoken_embedding = torch.cat(subtoken_embeddings)
                     token.set_embedding(self.name, final_subtoken_embedding)
@@ -1174,31 +1173,13 @@ class OpenAIGPTEmbeddings(TokenEmbeddings):
                     tokens_tensor = torch.tensor([indexed_tokens])
                     tokens_tensor = tokens_tensor.to(flair.device)
 
-                    _, hidden_states = self.model(tokens_tensor)
+                    hidden_states = self.model(tokens_tensor)[-1]
 
-                    subtoken_embeddings = []
-
-                    for layer in self.layers:
-                        first_embedding = hidden_states[layer][0][0]
-                        if self.pooling_operation == "first_last":
-                            last_embedding = hidden_states[layer][0][-1]
-                            final_embedding = torch.cat(
-                                [first_embedding, last_embedding]
-                            )
-                        elif self.pooling_operation == "last":
-                            final_embedding = hidden_states[layer][0][-1]
-                        elif self.pooling_operation == "mean":
-                            all_embeddings = [
-                                embedding.unsqueeze(0)
-                                for embedding in hidden_states[layer][0]
-                            ]
-                            final_embedding = torch.mean(
-                                torch.cat(all_embeddings, dim=0), dim=0
-                            )
-                        else:
-                            final_embedding = first_embedding
-
-                        subtoken_embeddings.append(final_embedding)
+                    subtoken_embeddings = _extract_embeddings(
+                        hidden_states=hidden_states,
+                        layers=self.layers,
+                        pooling_operation=self.pooling_operation,
+                    )
 
                     final_subtoken_embedding = torch.cat(subtoken_embeddings)
                     token.set_embedding(self.name, final_subtoken_embedding)
@@ -1262,31 +1243,94 @@ class OpenAIGPT2Embeddings(TokenEmbeddings):
                     tokens_tensor = torch.tensor([indexed_tokens])
                     tokens_tensor = tokens_tensor.to(flair.device)
 
-                    _, _, hidden_states = self.model(tokens_tensor)
+                    hidden_states = self.model(tokens_tensor)[-1]
 
-                    subtoken_embeddings = []
+                    subtoken_embeddings = _extract_embeddings(
+                        hidden_states=hidden_states,
+                        layers=self.layers,
+                        pooling_operation=self.pooling_operation,
+                    )
 
-                    for layer in self.layers:
-                        first_embedding = hidden_states[layer][0][0]
-                        if self.pooling_operation == "first_last":
-                            last_embedding = hidden_states[layer][0][-1]
-                            final_embedding = torch.cat(
-                                [first_embedding, last_embedding]
-                            )
-                        elif self.pooling_operation == "last":
-                            final_embedding = hidden_states[layer][0][-1]
-                        elif self.pooling_operation == "mean":
-                            all_embeddings = [
-                                embedding.unsqueeze(0)
-                                for embedding in hidden_states[layer][0]
-                            ]
-                            final_embedding = torch.mean(
-                                torch.cat(all_embeddings, dim=0), dim=0
-                            )
-                        else:
-                            final_embedding = first_embedding
+                    final_subtoken_embedding = torch.cat(subtoken_embeddings)
+                    token.set_embedding(self.name, final_subtoken_embedding)
 
-                        subtoken_embeddings.append(final_embedding)
+
+class RoBERTaEmbeddings(TokenEmbeddings):
+    def __init__(
+        self,
+        model: str = "roberta.large",
+        layers: str = "-1",
+        pooling_operation: str = "first_last",
+    ):
+        """RoBERTa, as proposed by Liu et al. 2019.
+        :param model: name of RoBERTa model
+        :param layers: comma-separated list of layers
+        :param pooling_operation: defines pooling operation for subwords
+        """
+        super().__init__()
+
+        try:
+            self.roberta = torch.hub.load("pytorch/fairseq", model)
+        except:
+            log_line(log)
+            log.warning("ATTENTION! sacremoses and subword_nmt needs to be installed!")
+            log_line(log)
+            pass
+
+        self.name = model
+        self.layers: List[int] = [int(layer) for layer in layers.split(",")]
+        self.pooling_operation = pooling_operation
+        self.static_embeddings = True
+
+        dummy_sentence: Sentence = Sentence()
+        dummy_sentence.add_token(Token("hello"))
+        embedded_dummy = self.embed(dummy_sentence)
+        self.__embedding_length: int = len(
+            embedded_dummy[0].get_token(1).get_embedding()
+        )
+
+    @property
+    def embedding_length(self) -> int:
+        return self.__embedding_length
+
+    def __getstate__(self):
+        # Copy the object's state from self.__dict__ which contains
+        # all our instance attributes. Always use the dict.copy()
+        # method to avoid modifying the original state.
+        state = self.__dict__.copy()
+        # Remove the unpicklable entries.
+        state["roberta"] = None
+        state["_modules"] = None
+
+        return state
+
+    def __setstate__(self, d):
+        self.__dict__ = d
+        # Restore unpickable entries
+        super().__init__()
+        self.roberta = torch.hub.load("pytorch/fairseq", self.name)
+
+    def _add_embeddings_internal(self, sentences: List[Sentence]) -> List[Sentence]:
+        self.roberta.to(flair.device)
+        self.roberta.eval()
+
+        with torch.no_grad():
+            for sentence in sentences:
+                for token in sentence.tokens:
+                    token_text = token.text
+                    subwords = self.roberta.encode(token_text)
+
+                    hidden_states = self.roberta.extract_features(
+                        subwords, return_all_hiddens=True
+                    )
+
+                    subtoken_embeddings = _extract_embeddings(
+                        hidden_states=hidden_states,
+                        layers=self.layers,
+                        pooling_operation=self.pooling_operation,
+                        subword_start_idx=1,
+                        subword_end_idx=-3,
+                    )
 
                     final_subtoken_embedding = torch.cat(subtoken_embeddings)
                     token.set_embedding(self.name, final_subtoken_embedding)

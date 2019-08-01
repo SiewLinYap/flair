@@ -1270,7 +1270,7 @@ class RoBERTaEmbeddings(TokenEmbeddings):
         super().__init__()
 
         try:
-            self.roberta = torch.hub.load("pytorch/fairseq", model)
+            self.model = torch.hub.load("pytorch/fairseq", model)
         except:
             log_line(log)
             log.warning("ATTENTION! sacremoses and subword_nmt needs to be installed!")
@@ -1299,7 +1299,7 @@ class RoBERTaEmbeddings(TokenEmbeddings):
         # method to avoid modifying the original state.
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
-        state["roberta"] = None
+        state["model"] = None
         state["_modules"] = None
 
         return state
@@ -1308,19 +1308,19 @@ class RoBERTaEmbeddings(TokenEmbeddings):
         self.__dict__ = d
         # Restore unpickable entries
         super().__init__()
-        self.roberta = torch.hub.load("pytorch/fairseq", self.name)
+        self.model = torch.hub.load("pytorch/fairseq", self.name)
 
     def _add_embeddings_internal(self, sentences: List[Sentence]) -> List[Sentence]:
-        self.roberta.to(flair.device)
-        self.roberta.eval()
+        self.model.to(flair.device)
+        self.model.eval()
 
         with torch.no_grad():
             for sentence in sentences:
                 for token in sentence.tokens:
                     token_text = token.text
-                    subwords = self.roberta.encode(token_text)
+                    subwords = self.model.encode(token_text)
 
-                    hidden_states = self.roberta.extract_features(
+                    hidden_states = self.model.extract_features(
                         subwords, return_all_hiddens=True
                     )
 
